@@ -1,0 +1,7 @@
+.idea
+.lightning_studio
+.vscode-server
+.env
+.vscode
+.wget-hsts
+/pdfs
