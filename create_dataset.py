@@ -1,48 +1,36 @@
-from PyPDF2 import PdfReader
-from langchain.docstore.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEndpoint
-from langchain_core.prompts import PromptTemplate
-from dotenv import load_dotenv
-from tqdm import tqdm
-import time
-import os
 import json
+import os
+import time
+
+from dotenv import load_dotenv
+from langchain.docstore.document import Document
+from langchain_core.prompts import PromptTemplate
+from langchain_huggingface import HuggingFaceEndpoint
+from huggingface_hub.utils._errors import HfHubHTTPError
+from PyPDF2 import PdfReader
+from PyPDF2.errors import EmptyFileError, PdfReadError
+
 
 load_dotenv()
 access_token = os.environ.get("ACCESS_TOKEN")
 
-SEPARATORS = [
-    "\n\n",
-    "\n",
-    " ",
-    "",
-]
-
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=100,
-    add_start_index=True,
-    strip_whitespace=True,
-    separators=SEPARATORS,
-)
-
 template = """
-You are a factual language model trained to convert bodies of text into a single, well-formed question and its corresponding answer.
-When processing the text, prioritize factual information and avoid making claims of sentience or consciousness.
-Present the question and answer in a single JSON object. 
-context: {context}
+Extract a key concept from the provided text and convert it into a well-formed question and its corresponding detailed answer. 
+Ensure the question is directly related to finance or cryptocurrency.
+The answer should be factual, concise, and provide a clear explanation of the concept. 
+Avoid making claims of sentience or consciousness.
+Present question and answer in a single JSON object.
+
+context: {context} 
 """
 prompt = PromptTemplate.from_template(template)
-
 repo_id = "mistralai/Mistral-7B-Instruct-v0.3"
 llm = HuggingFaceEndpoint(
     repo_id=repo_id,
-    model_kwargs={"max_length": 128},
-    temperature=0.5,
+    max_new_tokens=4096,
+    temperature=0.4,
     huggingfacehub_api_token=access_token,
 )
-
 llm_chain = prompt | llm
 
 
@@ -55,35 +43,65 @@ def is_json(data):
 
 
 def get_pdf_list(path):
-    files = []
     if os.path.exists(path):
-        files.extend(os.listdir(path))
-    return files
+        return [f for f in os.listdir(path) if f.endswith(".pdf")]
+    return FileNotFoundError
 
 
 def get_text(pdf_path):
-    path = "./pdfs/A_Random_Walk_Down_Wall_Street.pdf"
-    reader_obj = open(path, "rb")
-    pdf = PdfReader(reader_obj)
-    book = [Document(page_content=page.extract_text()) for page in pdf.pages]
-    reader_obj.close()
-    return book
+    with open(pdf_path, "rb") as reader_obj:
+        try:
+            pdf = PdfReader(reader_obj)
+            book = [Document(page_content=page.extract_text()) for page in pdf.pages]
+            return book
+        except EmptyFileError as e:
+            print(f"[ERROR] {e}")
+            return None
+        except PdfReadError as e:
+            print(f"[ERROR] {e}")
+            return None
 
 
-outputs = []
+def get_checkpoint():
+    if os.path.exists("checkpoint.json"):
+        with open("checkpoint.json", "r") as chkpoint:
+            checkpoint = json.load(chkpoint)
+            print("Loading last checkpoint")
+    else:
+        checkpoint = {"file": 0, "page": 0}
+    return checkpoint
+
+
+def save_checkpoint(output, i, j):
+    if is_json(output):
+        with open("outputs.jsonl", "a") as f:
+            f.write(output + ",\n")
+    checkpoint = {"file": i, "page": j}
+    with open("checkpoint.json", "w") as f:
+        json.dump(checkpoint, f)
+
+
 files = get_pdf_list("./pdfs")
+checkpoint = get_checkpoint()
+flag = False
 
-for pdf in tqdm(files, desc="total pdfs"):
-    pdf_path = "./pdfs/" + pdf
+for i in range(checkpoint["file"], len(files)):
+    pdf_path = os.path.join("./pdfs", files[i])
     book = get_text(pdf_path)
-    proccessed_docs = []
-    for page in book:
-        proccessed_docs += text_splitter.split_documents([page])
-    for chunk in tqdm(proccessed_docs, desc="total chunks"):
-        output = llm_chain.invoke({"context": chunk})
-        if is_json(output):
-            outputs.append(output)
-        time.sleep(12)
+    if not book:
+        continue
+    for j in range(checkpoint["page"], len(book)):
+        print(f"[INFO] file num: {i}, page num: {j}")
+        try:
+            output = llm_chain.invoke({"context": book[j]})
+            save_checkpoint(output, i, j)
+            time.sleep(5.5)
+        except HfHubHTTPError as e:
+            print(f"[ERROR] {e}")
+            flag = True
+            break
+    if flag:
+        break
+    checkpoint["page"] = 0
 
-with open("outputs.json", "w") as f:
-    json.dump(outputs, f)
+# TODO: use a different prompt template
