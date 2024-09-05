@@ -104,4 +104,12 @@ for i in range(checkpoint["file"], len(files)):
         break
     checkpoint["page"] = 0
 
-# TODO: use a different prompt template
+# TODO: use different prompt templates for different types of questions
+# TODO: add the data to json in a formatted way
+# {
+#     "data": [
+#         {"input": "str", "output": "str"},
+#         {"input": "str", "output": "str"},
+#         {"input": "str", "output": "str"},
+#     ]
+# }

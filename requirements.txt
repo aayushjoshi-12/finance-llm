@@ -1,2 +1,11 @@
 pyPDF2
 transformers
+dataset
+torch
+bitsandbytes
+peft
+trl
+streamlit
+python-dotenv
+langchain
+langchain_huggingface

@@ -122,8 +122,8 @@ def google_search(query, api_key, cse_id, num_results=1):
 
 
 def get_pdfs():
-    if not os.path.exists('./pdfs'):
-        os.mkdir('pdfs')
+    if not os.path.exists("./pdfs"):
+        os.mkdir("pdfs")
     remaining_titles = []
     for title in titles:
         query = f"{title} book free pdf download"
@@ -136,6 +136,7 @@ def get_pdfs():
     with open("remaining_titles.json", "w") as file:
         json.dump({"remaining_titles": remaining_titles}, file)
     return remaining_titles
+
 
 if __name__ == "__main__":
     get_pdfs()
